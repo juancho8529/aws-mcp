@@ -64,6 +64,16 @@ def register_provider_by_type(auth_type: str) -> None:
 
         register_auth_provider('cognito', CognitoAuthProvider)
         logger.info('Registered Cognito authentication provider')
+    elif auth_type == 'oauth_device':
+        from awslabs.openapi_mcp_server.auth.oauth_device_auth import (
+            OAuthDeviceAuthProvider,
+        )
+    
+        register_auth_provider(
+            'oauth_device',
+            OAuthDeviceAuthProvider,
+        )
+        logger.info('Registered OAuth Device authentication provider')
     else:
         logger.warning(f'Unknown auth type: {auth_type}, registering all providers')
         register_all_providers()
@@ -75,6 +85,9 @@ def register_all_providers() -> None:
     from awslabs.openapi_mcp_server.auth.api_key_auth import ApiKeyAuthProvider
     from awslabs.openapi_mcp_server.auth.basic_auth import BasicAuthProvider
     from awslabs.openapi_mcp_server.auth.bearer_auth import BearerAuthProvider
+    from awslabs.openapi_mcp_server.auth.oauth_device_auth import (
+        OAuthDeviceAuthProvider,
+    )
 
     # Register the standard providers
     register_auth_provider('bearer', BearerAuthProvider)
@@ -85,6 +98,12 @@ def register_all_providers() -> None:
 
     register_auth_provider('api_key', ApiKeyAuthProvider)
     logger.info('Registered Api_Key authentication provider')
+
+    register_auth_provider(
+        'oauth_device',
+        OAuthDeviceAuthProvider,
+    )
+    logger.info('Registered OAuth Device authentication provider')
 
     # Only register Cognito if it's available
     try:

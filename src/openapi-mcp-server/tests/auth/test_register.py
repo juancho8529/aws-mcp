@@ -137,6 +137,7 @@ class TestRegisterAuthProviders:
             assert 'api_key' in provider_types
             assert 'basic' in provider_types
             assert 'bearer' in provider_types
+            assert 'oauth_device' in provider_types
 
     def test_register_auth_provider_decorator(self):
         """Test register_auth_provider function."""
@@ -144,3 +145,17 @@ class TestRegisterAuthProviders:
         # The register_auth_provider and get_auth_provider functions work correctly
         # as demonstrated by other tests in the auth module
         pass
+
+    def test_register_provider_by_type_oauth_device(self):
+        """Test registration of OAuth Device authentication provider."""
+    
+        with patch(
+            'awslabs.openapi_mcp_server.auth.register.register_auth_provider'
+        ) as mock_register:
+            register_provider_by_type('oauth_device')
+    
+            mock_register.assert_called_once()
+    
+            args, _ = mock_register.call_args
+    
+            assert args[0] == 'oauth_device'

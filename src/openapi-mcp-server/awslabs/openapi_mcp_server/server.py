@@ -421,6 +421,16 @@ async def create_mcp_server_async(config: Config) -> FastMCP:
         for extra_provider in additional_providers:
             server.add_provider(extra_provider)
 
+        # Add interactive OAuth Device authentication middleware
+        if config.auth_type == 'oauth_device':
+            from awslabs.openapi_mcp_server.auth.oauth_device_middleware import (
+                OAuthDeviceAuthMiddleware,
+            )
+        
+            server.add_middleware(
+                OAuthDeviceAuthMiddleware(auth_provider)
+            )
+
         # Apply tag filters after server creation
         if include_tags:
             server.enable(tags=include_tags, only=True)
@@ -638,7 +648,7 @@ def main():
     # Authentication configuration
     parser.add_argument(
         '--auth-type',
-        choices=['none', 'basic', 'bearer', 'api_key', 'cognito'],
+        choices=['none', 'basic', 'bearer', 'api_key', 'cognito', 'oauth_device'],
         help='Authentication type to use (default: none)',
     )
 
@@ -676,6 +686,33 @@ def main():
     parser.add_argument(
         '--auth-cognito-scopes',
         help='Comma-separated list of scopes for Cognito OAuth 2.0 client credentials flow',
+    )
+
+    # OAuth Device Authorization
+    parser.add_argument(
+        '--auth-oauth-device-client-id',
+        help='OAuth Device Authorization client ID',
+    )
+    
+    parser.add_argument(
+        '--auth-oauth-device-authorization-endpoint',
+        help='OAuth Device Authorization endpoint',
+    )
+    
+    parser.add_argument(
+        '--auth-oauth-device-token-endpoint',
+        help='OAuth Device token endpoint',
+    )
+    
+    parser.add_argument(
+        '--auth-oauth-device-scopes',
+        help='Space-separated OAuth Device scopes',
+    )
+    
+    parser.add_argument(
+        '--auth-oauth-device-request-format',
+        choices=['form', 'json'],
+        help='OAuth Device request encoding (default: form)',
     )
 
     # Tag filtering

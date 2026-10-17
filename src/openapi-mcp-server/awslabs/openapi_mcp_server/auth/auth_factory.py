@@ -108,6 +108,23 @@ def get_auth_provider(config: Config) -> AuthProviderProtocol:
             getattr(config, 'auth_api_key', None),
             getattr(config, 'auth_api_key_name', None),
             getattr(config, 'auth_api_key_in', None),
+            getattr(config, 'auth_oauth_device_client_id', None),
+            getattr(
+                config,
+                'auth_oauth_device_authorization_endpoint',
+                None,
+            ),
+            getattr(
+                config,
+                'auth_oauth_device_token_endpoint',
+                None,
+            ),
+            getattr(config, 'auth_oauth_device_scopes', None),
+            getattr(
+                config,
+                'auth_oauth_device_request_format',
+                None,
+            ),
         )
     )
 

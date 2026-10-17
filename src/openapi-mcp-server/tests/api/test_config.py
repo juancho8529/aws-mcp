@@ -14,6 +14,7 @@
 """Tests for the API configuration module."""
 
 import os
+from types import SimpleNamespace
 from awslabs.openapi_mcp_server.api.config import Config, load_config
 from unittest.mock import MagicMock
 
@@ -223,3 +224,68 @@ def test_load_config_precedence():
         # Restore original environment
         os.environ.clear()
         os.environ.update(original_env)
+
+
+def test_load_config_oauth_device_auth():
+    """Test loading config with OAuth Device Authorization authentication."""
+    original_env = os.environ.copy()
+
+    try:
+        os.environ['AUTH_TYPE'] = 'oauth_device'
+        os.environ['AUTH_OAUTH_DEVICE_REQUEST_FORMAT'] = 'json'
+        os.environ['AUTH_OAUTH_DEVICE_CLIENT_ID'] = 'test-client-id'
+        os.environ['AUTH_OAUTH_DEVICE_AUTHORIZATION_ENDPOINT'] = (
+            'https://auth.example.com/device'
+        )
+        os.environ['AUTH_OAUTH_DEVICE_TOKEN_ENDPOINT'] = (
+            'https://auth.example.com/token'
+        )
+        os.environ['AUTH_OAUTH_DEVICE_SCOPES'] = 'openid profile api.read'
+
+        config = load_config()
+
+        assert config.auth_type == 'oauth_device'
+        assert config.auth_oauth_device_request_format == 'json'
+        assert config.auth_oauth_device_client_id == 'test-client-id'
+        assert (
+            config.auth_oauth_device_authorization_endpoint
+            == 'https://auth.example.com/device'
+        )
+        assert (
+            config.auth_oauth_device_token_endpoint
+            == 'https://auth.example.com/token'
+        )
+        assert config.auth_oauth_device_scopes == 'openid profile api.read'
+
+    finally:
+        os.environ.clear()
+        os.environ.update(original_env)
+
+def test_load_config_oauth_device_from_cli():
+    args = SimpleNamespace(
+        auth_type='oauth_device',
+        auth_oauth_device_client_id='cli-client',
+        auth_oauth_device_authorization_endpoint=(
+            'https://auth.example.com/device'
+        ),
+        auth_oauth_device_token_endpoint=(
+            'https://auth.example.com/token'
+        ),
+        auth_oauth_device_scopes='openid profile',
+        auth_oauth_device_request_format='json',
+    )
+
+    config = load_config(args)
+
+    assert config.auth_type == 'oauth_device'
+    assert config.auth_oauth_device_client_id == 'cli-client'
+    assert (
+        config.auth_oauth_device_authorization_endpoint
+        == 'https://auth.example.com/device'
+    )
+    assert (
+        config.auth_oauth_device_token_endpoint
+        == 'https://auth.example.com/token'
+    )
+    assert config.auth_oauth_device_scopes == 'openid profile'
+    assert config.auth_oauth_device_request_format == 'json'

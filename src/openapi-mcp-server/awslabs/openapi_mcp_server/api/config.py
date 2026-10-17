@@ -30,13 +30,20 @@ class Config:
     api_spec_path: str = ''
 
     # Authentication
-    auth_type: str = 'none'  # none, basic, bearer, api_key, cognito
+    auth_type: str = 'none'  # none, basic, bearer, api_key, cognito, oauth_device
     auth_username: str = ''
     auth_password: str = ''
     auth_token: str = ''
     auth_api_key: str = ''
     auth_api_key_name: str = 'api_key'
     auth_api_key_in: str = 'header'  # header, query, cookie
+
+    # OAuth Device Authorization authentication
+    auth_oauth_device_client_id: str = ''
+    auth_oauth_device_authorization_endpoint: str = ''
+    auth_oauth_device_token_endpoint: str = ''
+    auth_oauth_device_scopes: str = ''
+    auth_oauth_device_request_format: str = 'form'
 
     # Cognito authentication
     auth_cognito_client_id: str = ''
@@ -124,6 +131,22 @@ def load_config(args: Any = None) -> Config:
         'AUTH_COGNITO_SCOPES': (lambda v: setattr(config, 'auth_cognito_scopes', v)),
         'AUTH_COGNITO_USER_POOL_ID': (lambda v: setattr(config, 'auth_cognito_user_pool_id', v)),
         'AUTH_COGNITO_REGION': (lambda v: setattr(config, 'auth_cognito_region', v)),
+        # OAuth Device Authorization environment variables
+        'AUTH_OAUTH_DEVICE_CLIENT_ID': (
+            lambda v: setattr(config, 'auth_oauth_device_client_id', v)
+        ),
+        'AUTH_OAUTH_DEVICE_AUTHORIZATION_ENDPOINT': (
+            lambda v: setattr(config, 'auth_oauth_device_authorization_endpoint', v)
+        ),
+        'AUTH_OAUTH_DEVICE_TOKEN_ENDPOINT': (
+            lambda v: setattr(config, 'auth_oauth_device_token_endpoint', v)
+        ),
+        'AUTH_OAUTH_DEVICE_SCOPES': (
+            lambda v: setattr(config, 'auth_oauth_device_scopes', v)
+        ),
+        'AUTH_OAUTH_DEVICE_REQUEST_FORMAT': (
+            lambda v: setattr(config, 'auth_oauth_device_request_format', v)
+        ),
         # Server configuration
         'SERVER_HOST': (lambda v: setattr(config, 'host', v)),
         'SERVER_PORT': (lambda v: setattr(config, 'port', int(v))),
@@ -247,6 +270,47 @@ def load_config(args: Any = None) -> Config:
         if hasattr(args, 'auth_cognito_region') and args.auth_cognito_region:
             logger.debug(f'Setting Cognito region from arguments: {args.auth_cognito_region}')
             config.auth_cognito_region = args.auth_cognito_region
+
+        # OAuth Device Authorization arguments
+        if (
+            hasattr(args, 'auth_oauth_device_client_id')
+            and args.auth_oauth_device_client_id
+        ):
+            config.auth_oauth_device_client_id = (
+                args.auth_oauth_device_client_id
+            )
+        
+        if (
+            hasattr(args, 'auth_oauth_device_authorization_endpoint')
+            and args.auth_oauth_device_authorization_endpoint
+        ):
+            config.auth_oauth_device_authorization_endpoint = (
+                args.auth_oauth_device_authorization_endpoint
+            )
+        
+        if (
+            hasattr(args, 'auth_oauth_device_token_endpoint')
+            and args.auth_oauth_device_token_endpoint
+        ):
+            config.auth_oauth_device_token_endpoint = (
+                args.auth_oauth_device_token_endpoint
+            )
+        
+        if (
+            hasattr(args, 'auth_oauth_device_scopes')
+            and args.auth_oauth_device_scopes
+        ):
+            config.auth_oauth_device_scopes = (
+                args.auth_oauth_device_scopes
+            )
+        
+        if (
+            hasattr(args, 'auth_oauth_device_request_format')
+            and args.auth_oauth_device_request_format
+        ):
+            config.auth_oauth_device_request_format = (
+                args.auth_oauth_device_request_format
+            )
 
         # Tag filtering arguments
         if hasattr(args, 'include_tags') and args.include_tags:

@@ -139,3 +139,35 @@ class TestAuthFactory:
         # Should fall back to NullAuthProvider
         assert isinstance(provider, NullAuthProvider)
         assert provider.provider_name == 'none'
+
+    def test_get_oauth_device_provider(self):
+        from awslabs.openapi_mcp_server.auth.oauth_device_auth import (
+            OAuthDeviceAuthProvider,
+        )
+        from awslabs.openapi_mcp_server.auth.register import (
+            register_provider_by_type,
+        )
+    
+        if not is_auth_type_available('oauth_device'):
+            register_provider_by_type('oauth_device')
+    
+        config = Config()
+    
+        config.auth_type = 'oauth_device'
+        config.auth_oauth_device_client_id = 'test-client'
+        config.auth_oauth_device_authorization_endpoint = (
+            'https://auth.example.com/device'
+        )
+        config.auth_oauth_device_token_endpoint = (
+            'https://auth.example.com/token'
+        )
+        config.auth_oauth_device_request_format = 'form'
+    
+        provider = get_auth_provider(config)
+    
+        assert isinstance(
+            provider,
+            OAuthDeviceAuthProvider,
+        )
+    
+        assert provider.provider_name == 'oauth_device'
