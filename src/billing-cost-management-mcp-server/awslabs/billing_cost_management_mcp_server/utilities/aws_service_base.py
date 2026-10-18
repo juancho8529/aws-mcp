@@ -29,16 +29,45 @@ import boto3
 import json
 import os
 import re
+from .error_contract import DO_NOT_RETRY
 from .logging_utils import get_context_logger, get_logger
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    NoCredentialsError,
+    NoRegionError,
+    ParamValidationError,
+    PartialCredentialsError,
+    ProfileNotFound,
+    UnknownServiceError,
+)
 from datetime import datetime, timedelta
 from fastmcp import Context
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 # Configure logger for this module
 logger = get_logger(__name__)
+
+# BotoCoreError subclasses that report a credential or configuration problem rather
+# than a connection failure. Retrying the same request cannot fix them during the run,
+# so handle_aws_error keeps error_type='aws_connection_error' (stable for callers) but
+# sets retry_strategy='do_not_retry' explicitly; ErrorSignalingMiddleware keeps a
+# retry_strategy that is already set. Real connection failures (EndpointConnectionError,
+# ConnectTimeoutError, ReadTimeoutError, ConnectionClosedError) stay retryable.
+_NON_RETRYABLE_BOTOCORE_ERRORS = (
+    NoCredentialsError,
+    PartialCredentialsError,
+    NoRegionError,
+    ProfileNotFound,
+    UnknownServiceError,
+)
+
+_HINT_AWS_CONFIGURATION = (
+    'AWS credentials or client configuration are missing or invalid. Do not retry; '
+    'ask the user to fix the AWS profile, credentials, or region.'
+)
 
 
 # Version for user agent tracking
@@ -103,11 +132,13 @@ def create_aws_client(service_name: str, region_name: Optional[str] = None) -> A
     return session.client(service_name, config=config)
 
 
-def parse_json(json_str: Optional[str], parameter_name: str) -> Any:
+def parse_json(
+    json_str: Optional[Union[str, List[Any], Dict[str, Any]]], parameter_name: str
+) -> Any:
     """Parse a JSON string into a Python object.
 
     Args:
-        json_str: JSON string to parse
+        json_str: JSON string to parse, or an already-parsed list or dict (returned as-is)
         parameter_name: Name of the parameter (for error messages)
 
     Returns:
@@ -118,6 +149,9 @@ def parse_json(json_str: Optional[str], parameter_name: str) -> Any:
     """
     if not json_str:
         return None
+
+    if isinstance(json_str, (list, dict)):
+        return json_str
 
     try:
         return json.loads(json_str)
@@ -209,7 +243,7 @@ async def handle_aws_error(
         # Get AWS error details
         aws_error = error.response.get('Error', {})
         error_code = aws_error.get('Code', 'UnknownError')
-        aws_message = aws_error.get('Message', 'No error message provided')
+        aws_message = aws_error.get('Message') or 'No error message provided'
         request_id = error.response.get('ResponseMetadata', {}).get('RequestId', 'Unknown')
         http_status = error.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 0)
 
@@ -240,6 +274,25 @@ async def handle_aws_error(
             {'error_type': error_type, 'message': user_message, 'details': str(error)}
         )
 
+    elif isinstance(error, ParamValidationError):
+        # ParamValidationError is a client-side botocore validation failure (unknown kwargs,
+        # bad parameter shape, missing required keys, type mismatches). It subclasses
+        # BotoCoreError, but it is a validation failure, not a connection failure — surface
+        # it that way so callers (and skills) see "fix the parameters", not "AWS is
+        # unreachable". Must be matched BEFORE the BotoCoreError branch below.
+        error_type = 'validation_error'
+        user_message = str(error) or 'Invalid parameters'
+        await ctx_logger.warning(f'Validation error (ParamValidationError): {error_context}')
+
+        error_response.update(
+            {
+                'error_type': error_type,
+                'boto_error_type': 'ParamValidationError',
+                'message': user_message,
+                'details': str(error),
+            }
+        )
+
     elif isinstance(error, BotoCoreError):
         error_type = 'aws_connection_error'
         error_code = error.__class__.__name__
@@ -254,6 +307,11 @@ async def handle_aws_error(
                 'details': str(error),
             }
         )
+
+        if isinstance(error, _NON_RETRYABLE_BOTOCORE_ERRORS):
+            # Credential/configuration failure: same error_type, but not retryable.
+            error_response['retry_strategy'] = DO_NOT_RETRY
+            error_response['hint'] = _HINT_AWS_CONFIGURATION
 
     else:
         error_type = 'unknown_error'
@@ -397,7 +455,8 @@ def format_response(
     Args:
         status: Response status ("success" or "error")
         data: Response data payload
-        message: Optional message to include
+        message: Optional message to include. For errors, defaults to a string
+            data['message'] so the documented top-level message is set
         error_type: Optional error classification, set at the top level like handle_aws_error
         operation: Optional name of the operation that produced the response
         service: Optional AWS service name
@@ -409,6 +468,13 @@ def format_response(
         Dict containing a standardized response format
     """
     response = {'status': status, 'data': data}
+
+    # Many error sites put their text in data['message'] instead of passing message.
+    # Lift it (data is left unchanged) so the error carries the top-level message.
+    if not message and status == 'error' and isinstance(data, dict):
+        nested = data.get('message')
+        if isinstance(nested, str):
+            message = nested
 
     if message:
         response['message'] = message
