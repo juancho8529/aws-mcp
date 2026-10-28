@@ -311,6 +311,70 @@ async def test_additional_specs_do_not_inherit_primary_auth():
 
 
 @pytest.mark.asyncio
+async def test_additional_specs_inherit_primary_auth():
+    """auth_type=inherit reuses primary headers, cookies, and httpx auth."""
+    extra = json.dumps(
+        [
+            {
+                'name': 'partner',
+                'spec_url': 'https://partner.example.com/spec.json',
+                'base_url': 'https://partner.example.com',
+                'auth_type': 'inherit',
+            }
+        ]
+    )
+    config = _config(additional_specs=extra, auth_type='bearer', auth_token='ignored')
+    mock_httpx_auth = MagicMock(name='primary_httpx_auth')
+    mock_provider = MagicMock()
+    mock_provider.is_configured.return_value = True
+    mock_provider.provider_name = 'bearer'
+    mock_provider.get_auth_headers.return_value = {
+        'Authorization': 'Bearer SECRET_PRIMARY_TOKEN',
+    }
+    mock_provider.get_auth_params.return_value = {}
+    mock_provider.get_auth_cookies.return_value = {'session': 'cookie-value'}
+    mock_provider.get_httpx_auth.return_value = mock_httpx_auth
+
+    with (
+        patch('awslabs.openapi_mcp_server.server.load_openapi_spec') as mock_load,
+        patch('awslabs.openapi_mcp_server.server.validate_openapi_spec', return_value=True),
+        patch('awslabs.openapi_mcp_server.server.HttpClientFactory.create_client') as mock_client,
+        patch(
+            'awslabs.openapi_mcp_server.utils.url_validator.resolve_hostname',
+            return_value=['93.184.216.34'],
+        ),
+        patch('awslabs.openapi_mcp_server.auth.register.register_provider_by_type'),
+        patch(
+            'awslabs.openapi_mcp_server.auth.get_auth_provider',
+            return_value=mock_provider,
+        ),
+        patch(
+            'awslabs.openapi_mcp_server.auth.is_auth_type_available',
+            return_value=True,
+        ),
+    ):
+
+        def load_side_effect(url='', path='', validated_url=None, **kwargs):
+            url = url or (validated_url.original_url if validated_url else '')
+            if 'partner' in url:
+                return EXTRA_SPEC
+            return PETSTORE_SPEC
+
+        mock_load.side_effect = load_side_effect
+        mock_client.return_value = MagicMock()
+
+        await create_mcp_server_async(config)
+
+        assert mock_client.call_count >= 2
+        extra_kwargs = mock_client.call_args_list[1].kwargs
+        assert extra_kwargs.get('headers') == {
+            'Authorization': 'Bearer SECRET_PRIMARY_TOKEN',
+        }
+        assert extra_kwargs.get('auth') is mock_httpx_auth
+        assert extra_kwargs.get('cookies') == {'session': 'cookie-value'}
+
+
+@pytest.mark.asyncio
 async def test_additional_specs_per_entry_auth():
     """Additional specs use their own per-entry auth configuration."""
     extra = json.dumps(
