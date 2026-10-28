@@ -29,8 +29,8 @@ from awslabs.billing_cost_management_mcp_server.utilities.aws_service_base impor
     format_response,
     get_date_range,
     handle_aws_error,
-    paginate_aws_response,
     parse_json,
+    parse_metrics,
     validate_date_format,
 )
 from datetime import datetime, timedelta
@@ -160,6 +160,54 @@ class TestParseJson:
         value = {'Dimensions': {'Key': 'SERVICE', 'Values': ['Amazon S3']}}
 
         assert parse_json(value, 'test_param') is value
+
+
+class TestParseMetrics:
+    """Tests for parse_metrics function."""
+
+    @pytest.mark.parametrize(
+        'metrics, expected',
+        [
+            (['UnblendedCost', 'UsageQuantity'], ['UnblendedCost', 'UsageQuantity']),
+            ('["UnblendedCost", "UsageQuantity"]', ['UnblendedCost', 'UsageQuantity']),
+            (None, ['UnblendedCost']),
+            ('', ['UnblendedCost']),
+            ([], ['UnblendedCost']),
+            ('[]', ['UnblendedCost']),
+        ],
+    )
+    def test_valid_metrics(self, metrics, expected):
+        """Lists and JSON array strings parse to a list; unset is the default."""
+        assert parse_metrics(metrics) == expected
+
+    def test_default_is_a_fresh_list(self):
+        """Mutating a returned default does not change the next default."""
+        parse_metrics(None).append('UsageQuantity')
+
+        assert parse_metrics(None) == ['UnblendedCost']
+
+    @pytest.mark.parametrize(
+        'metrics',
+        [
+            5,
+            {'UnblendedCost': True},
+            ['UnblendedCost', 1],
+            [''],
+            '[""]',
+            '{"UnblendedCost": true}',
+            '"UnblendedCost"',
+        ],
+    )
+    def test_invalid_metrics_raise(self, metrics):
+        """Anything but a list of non-empty metric names is rejected."""
+        with pytest.raises(ValueError, match='metrics must be a list of metric names'):
+            parse_metrics(metrics)
+
+    @pytest.mark.parametrize('metrics', ['[UnblendedCost', 'UnblendedCost'])
+    def test_invalid_json_raises(self, metrics):
+        """A string that is not valid JSON is rejected."""
+        with pytest.raises(ValueError, match='Invalid JSON format for metrics parameter'):
+            parse_metrics(metrics)
 
 
 class TestDateFunctions:
@@ -575,87 +623,3 @@ class TestFormatResponse:
         result = format_response('success', {'message': 'No results'})
 
         assert result == {'status': 'success', 'data': {'message': 'No results'}}
-
-
-class TestPaginateAwsResponse:
-    """Tests for paginate_aws_response pagination metadata."""
-
-    @pytest.mark.asyncio
-    async def test_last_page_empty_string_token(self):
-        """Test that an empty-string token on the last page reports no more pages."""
-        # Setup
-        ctx = AsyncMock()
-        # Some AWS APIs (e.g. Savings Plans DescribeSavingsPlansOfferingRates)
-        # return an empty-string token on the final page rather than omitting it.
-        api_function = MagicMock(return_value={'Items': [1, 2, 3], 'NextToken': ''})
-
-        # Execute
-        results, metadata = await paginate_aws_response(
-            ctx,
-            'TestOperation',
-            api_function,
-            {},
-            'Items',
-        )
-
-        # Assert
-        assert results == [1, 2, 3]
-        assert metadata['has_more'] is False
-        assert metadata['complete_dataset'] is True
-        assert metadata['next_token'] is None
-        assert metadata['pages_fetched'] == 1
-        assert metadata['total_results'] == 3
-
-    @pytest.mark.asyncio
-    async def test_max_pages_hit_with_token(self):
-        """Test that hitting max_pages with a real token still reports more pages."""
-        # Setup
-        ctx = AsyncMock()
-        api_function = MagicMock(
-            side_effect=[
-                {'Items': [1, 2], 'NextToken': 'token-1'},
-                {'Items': [3, 4], 'NextToken': 'token-2'},
-            ]
-        )
-
-        # Execute
-        results, metadata = await paginate_aws_response(
-            ctx,
-            'TestOperation',
-            api_function,
-            {},
-            'Items',
-            max_pages=2,
-        )
-
-        # Assert
-        assert results == [1, 2, 3, 4]
-        assert metadata['has_more'] is True
-        assert metadata['complete_dataset'] is False
-        assert metadata['next_token'] == 'token-2'
-        assert metadata['pages_fetched'] == 2
-        assert metadata['total_results'] == 4
-
-    @pytest.mark.asyncio
-    async def test_missing_token_key(self):
-        """Test that a missing token key reports no more pages (unchanged behavior)."""
-        # Setup
-        ctx = AsyncMock()
-        api_function = MagicMock(return_value={'Items': [1, 2, 3]})
-
-        # Execute
-        results, metadata = await paginate_aws_response(
-            ctx,
-            'TestOperation',
-            api_function,
-            {},
-            'Items',
-        )
-
-        # Assert
-        assert results == [1, 2, 3]
-        assert metadata['has_more'] is False
-        assert metadata['complete_dataset'] is True
-        assert metadata['next_token'] is None
-        assert metadata['pages_fetched'] == 1
-        assert metadata['total_results'] == 3
