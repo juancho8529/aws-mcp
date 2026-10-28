@@ -360,13 +360,23 @@ async def create_mcp_server_async(config: Config) -> FastMCP:
                             f'Additional spec {extra_name} validation failed, continuing anyway'
                         )
 
-                    # Build per-entry auth — never inherit primary API credentials
+                    # Build per-entry auth. Use auth_type=inherit to reuse the
+                    # primary API credentials (needed for oauth_device and other
+                    # dynamic auth providers that additional specs cannot recreate).
                     extra_headers = {}
                     extra_auth = None
                     extra_cookies = None
 
                     entry_auth_type = entry.get('auth_type', 'none')
-                    if entry_auth_type == 'bearer':
+                    if entry_auth_type == 'inherit':
+                        extra_headers = dict(auth_headers) if auth_headers else {}
+                        extra_auth = httpx_auth
+                        extra_cookies = dict(auth_cookies) if auth_cookies else None
+                        logger.info(
+                            f'Additional spec {extra_name}: inheriting primary auth '
+                            f'({config.auth_type})'
+                        )
+                    elif entry_auth_type == 'bearer':
                         token = entry.get('auth_token', '')
                         if token:
                             extra_headers['Authorization'] = f'Bearer {token}'
